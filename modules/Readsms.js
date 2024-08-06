@@ -1,13 +1,14 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, Button, PermissionsAndroid, Alert } from 'react-native';
+import { View, Text, Button, PermissionsAndroid, Alert, ScrollView } from 'react-native';
 import SmsAndroid from 'react-native-get-sms-android';
 import RNFS from 'react-native-fs';
-import FilterOptions from './Filters';
+import SummaryChart from './SummaryChart';
+import CashFlowChart from './Graphs';
 
 const ReadSMS = () => {
   const [smsList, setSmsList] = useState([]);
   const [transactionList, setTransactionList] = useState([]);
-  const [filteredTransactions, setFilteredTransactions] = useState([]);
+  const [todayTransactions, setTodayTransactions] = useState([]);
 
   useEffect(() => {
     requestPermissions();
@@ -53,7 +54,7 @@ const ReadSMS = () => {
       JSON.stringify({
         box: 'inbox',
         indexFrom: 0,
-        maxCount: 308,
+        maxCount: 9999,
       }),
       (fail) => {
         console.log('Failed with this error: ' + fail);
@@ -62,25 +63,33 @@ const ReadSMS = () => {
         const messages = JSON.parse(smsList);
         setSmsList(messages);
         extractTransactions(messages);
+        extractTodayTransactions(messages);
       },
     );
   };
 
-  const extractTransactions = (messages) => {
-    const currentDate = new Date();
-    const daysLimit = 40;
-    const millisecondsInADay = 24 * 60 * 60 * 1000;
-    const dateLimit = new Date(currentDate.getTime() - daysLimit * millisecondsInADay);
+  const extractTodayTransactions = (messages) => {
+ // // Specify the date and time range
 
-    const transactions = messages
-      .filter(sms => sms.address.toLowerCase() === 'mpesa')
-      .filter(sms => new Date(sms.date) >= dateLimit)
+const currentDate = new Date();
+
+const startOfDay = new Date(currentDate);
+ 
+ startOfDay.setHours(0, 0, 0, 0); // 00:00:00
+ 
+ const endOfDay = new Date(currentDate);
+ 
+endOfDay.setHours(23, 59, 59, 999); // 23:59:59
+ 
+    const todayTransactions = messages
+      .filter(sms => sms.address.toLowerCase() === 'mpesa') // Only M-PESA transactions
+      .filter(sms => new Date(sms.date) >= startOfDay && new Date(sms.date) <= endOfDay)
       .map(sms => {
         const body = sms.body;
-        let amountMatch = body.match(/Ksh(\d+(\.\d{2})?)/);
-        let amount = amountMatch ? parseFloat(amountMatch[1]) : null;
+        let amountMatch = body.match(/Ksh(\d{1,3}(,\d{3})*(\.\d{2})?)/);
+        let amount = amountMatch ? parseFloat(amountMatch[1].replace(/,/g, '')) : null;
         let type, counterpart;
-
+  
         if (body.includes('sent to')) {
           type = 'deduction';
           const match = body.match(/sent to (.+?) on/);
@@ -89,70 +98,110 @@ const ReadSMS = () => {
           type = 'deduction';
           const match = body.match(/paid to (.+?) on/);
           counterpart = match ? match[1] : body.substring(body.indexOf('paid to') + 8, body.indexOf(' on'));
-        } else if (body.includes('You have received')) {
+        } else if (body.includes('You have received') || body.includes('received from')) {
           type = 'credit';
           const match = body.match(/from (.+?) on/);
           counterpart = match ? match[1] : body.substring(body.indexOf('from') + 5, body.indexOf(' on'));
+        } else if (body.includes('You bought')) {
+          type = 'deduction';
+          const match = body.match(/You bought (.+?) on/);
+          counterpart = match ? match[1] : body.substring(body.indexOf('You bought') + 10, body.indexOf(' on'));
         }
-
+  
         return {
           id: sms._id,
-          date: new Date(sms.date).toLocaleDateString(),
+          date: new Date(sms.date).toLocaleString(),
           amount,
           counterpart,
           type
         };
-      }).filter(transaction => transaction.amount !== null && transaction.counterpart !== undefined);
+      }
+      )
+      .filter(transaction => transaction.amount !== null && transaction.counterpart !== undefined);
 
-    setTransactionList(transactions);
-    setFilteredTransactions(transactions); // Set filtered transactions initially
+    setTodayTransactions(todayTransactions);
   };
 
-  const handleFilterChange = (filters) => {
-    const { type, date, counterpart } = filters;
-    const filtered = transactionList.filter(transaction => {
-      const typeMatch = type === 'all' || transaction.type === type;
-      const dateMatch = !date || transaction.date === new Date(date).toLocaleDateString();
-      const counterpartMatch = !counterpart || transaction.counterpart === counterpart;
 
-      return typeMatch && dateMatch && counterpartMatch;
-    });
-
-    setFilteredTransactions(filtered);
-  };
-
-  const downloadJSON = () => {
-    const path = RNFS.DownloadDirectoryPath + '/transaction_list.json';
-
-    RNFS.writeFile(path, JSON.stringify(transactionList, null, 2), 'utf8')
-      .then(() => {
-        console.log('JSON file created at: ' + path);
-        Alert.alert('Success', 'JSON file created at: ' + path);
+  const extractTransactions = (messages) => {
+   
+    // Filter and map transactions
+    const transactions = messages
+      .filter(sms => sms.address.toLowerCase() === 'mpesa') // Only M-PESA transactions
+      .map(sms => {
+        const body = sms.body;
+        let amountMatch = body.match(/Ksh(\d{1,3}(,\d{3})*(\.\d{2})?)/);
+        let amount = amountMatch ? parseFloat(amountMatch[1].replace(/,/g, '')) : null;
+        let type, counterpart;
+  
+        if (body.includes('sent to')) {
+          type = 'deduction';
+          const match = body.match(/sent to (.+?) on/);
+          counterpart = match ? match[1] : body.substring(body.indexOf('sent to') + 8, body.indexOf(' on'));
+        } else if (body.includes('paid to')) {
+          type = 'deduction';
+          const match = body.match(/paid to (.+?) on/);
+          counterpart = match ? match[1] : body.substring(body.indexOf('paid to') + 8, body.indexOf(' on'));
+        } else if (body.includes('You have received') || body.includes('received from')) {
+          type = 'credit';
+          const match = body.match(/from (.+?) on/);
+          counterpart = match ? match[1] : body.substring(body.indexOf('from') + 5, body.indexOf(' on'));
+        } else if (body.includes('You bought')) {
+          type = 'deduction';
+          const match = body.match(/You bought (.+?) on/);
+          counterpart = match ? match[1] : body.substring(body.indexOf('You bought') + 10, body.indexOf(' on'));
+        }
+  
+        return {
+          id: sms._id,
+          date: new Date(sms.date).toLocaleString(),
+          amount,
+          counterpart,
+          type
+        };
       })
-      .catch((err) => {
-        console.log(err.message);
-      });
+      .filter(transaction => transaction.amount !== null && transaction.counterpart !== undefined);
+  
+    setTransactionList(transactions);
   };
+  
+  // const outputDir =  RNFS.DownloadDirectoryPath + '/transaction_list.json';
+
+  // const downloadJSON = () => {
+  //   RNFS.writeFile(outputDir, JSON.stringify(transactionList, null, 2), 'utf8')
+  //     .then(() => {
+  //       Alert.alert('Success', 'JSON file saved to ' + outputDir);
+  //     })
+  //     .catch((err) => {
+  //       console.log(err.message);
+  //       Alert.alert('Error', 'Failed to save JSON file');
+  //     }
+  //   );
+  // };
+
+  // const downloadMessages = () => {
+  //   RNFS.writeFile(RNFS.DownloadDirectoryPath + '/sms_list.json', JSON.stringify(smsList, null, 2), 'utf8')
+  //     .then(() => {
+  //       Alert.alert('Success', 'JSON file saved to ' + RNFS.DownloadDirectoryPath + '/sms_list.json');
+  //     })
+  //     .catch((err) => {
+  //       console.log(err.message);
+  //       Alert.alert('Error', 'Failed to save JSON file');
+  //     }
+  //   );
+  // };
+
+
+
 
   return (
-    <View>
-      <Text>SMS Messages fetched and filtered in the background.</Text>
-      <Text>Total Messages: {smsList.length}</Text>
-      <Text>Total Transactions: {transactionList.length} from the last 40 days</Text>
-      <Button title="Fetch SMS" onPress={fetchSms} />
-      <Button title="Download JSON" onPress={downloadJSON} />
+    <ScrollView>
+      <Text style={{ textAlign: 'center', fontSize: 20, margin: 20 }}>M-PESA Transactions</Text>
+      <CashFlowChart data={todayTransactions} />
 
-      <FilterOptions data={transactionList} onFilterChange={handleFilterChange} />
-
-      {filteredTransactions.length > 0 && (
-        <>
-          <Text>Filtered Transactions:</Text>
-          {filteredTransactions.map((transaction, index) => (
-            <Text key={index}>{transaction.type} of Ksh{transaction.amount} to/from {transaction.counterpart} on {transaction.date}</Text>
-          ))}
-        </>
-      )}
-    </View>
+      <SummaryChart data={transactionList} />
+   
+    </ScrollView>
   );
 };
 
