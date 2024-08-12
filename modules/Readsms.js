@@ -1,9 +1,38 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, ActivityIndicator, Alert } from 'react-native';
+import { setJSExceptionHandler, setNativeExceptionHandler } from 'react-native-exception-handler';
 import SummaryChartMonthly from './SumarryChartMonthly';
 import SummaryChartWeekly from './SummaryChartWeekly';
 import SummaryChartYearly from './SummaryChartYearly';
 import CashFlowChart from './Graphs';
+
+// Define custom error handler
+const errorHandler = (error, isFatal) => {
+  if (isFatal) {
+    Alert.alert(
+      'Unexpected error occurred',
+      `Error: ${isFatal ? 'Fatal:' : ''} ${error.name} ${error.message}`,
+      [
+        {
+          text: 'Restart',
+          onPress: () => {
+            // Restart the app or handle the fatal error accordingly
+          },
+        },
+      ]
+    );
+  } else {
+    console.log(error); // Log non-fatal errors for debugging
+  }
+};
+
+setJSExceptionHandler(errorHandler, true);
+
+// Optional: Handle native exceptions as well
+setNativeExceptionHandler((errorString) => {
+  console.log('Native error:', errorString);
+  // Handle native exceptions
+});
 
 const ReadSMS = ({ smsList }) => {
   const [transactionList, setTransactionList] = useState([]);
@@ -142,4 +171,3 @@ const styles = {
 };
 
 export default ReadSMS;
-
