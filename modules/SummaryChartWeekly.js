@@ -19,13 +19,17 @@ const SummaryChartWeekly = ({ data }) => {
   const convertStringToDateTime = (str) => {
     const [datePart, timePart] = str.split(", ");
     const [month, day, year] = datePart.split("/").map(Number);
-    const [time, period] = timePart.split(" ");
-    let [hours, minutes, seconds] = time.split(":").map(Number);
 
-    if (period.toLowerCase() === "pm" && hours !== 12) {
-      hours += 12;
-    } else if (period.toLowerCase() === "am" && hours === 12) {
-      hours = 0;
+    let hours = 0, minutes = 0, seconds = 0;
+    if (timePart) {
+      const [time, period] = timePart.split(" ");
+      [hours, minutes, seconds] = time.split(":").map(Number);
+      
+      if (period && period.toLowerCase() === "pm" && hours !== 12) {
+        hours += 12;
+      } else if (period && period.toLowerCase() === "am" && hours === 12) {
+        hours = 0;
+      }
     }
 
     return new Date(year, month - 1, day, hours, minutes, seconds);
@@ -76,7 +80,6 @@ const SummaryChartWeekly = ({ data }) => {
     }
   });
 
-
   // Prepare data for bar chart
   const chartData = Object.keys(weeklyTotals).flatMap(day => [
     {
@@ -114,7 +117,6 @@ const SummaryChartWeekly = ({ data }) => {
 
   // Calculate dynamic width based on the number of bars
   const chartWidth = chartData.length * 50;
-
 
   // Render the title and legend
   const renderTitle = () => (

@@ -6,6 +6,8 @@ import { Card } from '@rneui/themed';
 const SummaryChartMonthly = ({ data }) => {
   const screenWidth = Dimensions.get("window").width;
 
+  
+
   if (!data || data.length === 0) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>

@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, ScrollView, Alert } from 'react-native';
 import { setJSExceptionHandler, setNativeExceptionHandler } from 'react-native-exception-handler';
 import SummaryChartMonthly from './SumarryChartMonthly';
 import SummaryChartWeekly from './SummaryChartWeekly';
 import SummaryChartYearly from './SummaryChartYearly';
 import CashFlowChart from './Graphs';
+import { convertDate } from '../utils/dateUtility';
 
 // Define custom error handler
 const errorHandler = (error, isFatal) => {
@@ -37,12 +38,14 @@ setNativeExceptionHandler((errorString) => {
 const ReadSMS = ({ smsList }) => {
   const [transactionList, setTransactionList] = useState([]);
   const [todayTransactions, setTodayTransactions] = useState([]);
-  // const [loading, setLoading] = useState(true);
+  const [noTransactions, setNoTransactions] = useState(false);
 
   useEffect(() => {
     if (smsList && smsList.length > 0) {
-      extractTransactions(smsList, true);  
-      extractTransactions(smsList);       
+      extractTransactions(smsList, true);
+      extractTransactions(smsList);
+    } else {
+      setNoTransactions(true);
     }
   }, [smsList]);
 
@@ -73,29 +76,34 @@ const ReadSMS = ({ smsList }) => {
       setTodayTransactions(transactions);
     } else {
       setTransactionList(transactions);
-      // setLoading(false);
+      if (transactions.length === 0) {
+        setNoTransactions(true);
+      }
     }
   };
 
   const parseTransaction = (sms) => {
     const body = sms.body;
-
+  
     // Extract amount
-    const amountMatch = body.match(/Ksh(\d{1,3}(,\d{3})*(\.\d{2})?)/);
+    const amountMatch = body.match(/Kshs?(\d{1,3}(,\d{3})*(\.\d{2})?)/);
     const amount = amountMatch ? parseFloat(amountMatch[1].replace(/,/g, '')) : null;
-
+  
     let type = null;
     let counterpart = null;
-
+  
     // Determine type and counterpart
     const typeMatchPairs = [
-      { type: 'deduction', pattern: /sent to (.+?) on/ },
-      { type: 'deduction', pattern: /paid to (.+?) on/ },
-      { type: 'credit', pattern: /received from (.+?) on/ },
-      { type: 'credit', pattern: /You have received/ }, 
-      { type: 'deduction', pattern: /You bought (.+?) on/ }
-    ];
+      { type: 'deduction', pattern: /sent to (.+?) on/ }, // for sent transactions
+      { type: 'deduction', pattern: /paid to (.+?) on/ }, // for payments to businesses
+      { type: 'credit', pattern: /received from (.+?) on/ }, // for received transactions
+      { type: 'credit', pattern: /You have received/ }, // for received transactions 
+      { type: 'deduction', pattern: /You bought (.+?) on/ }, // for airtime purchases
+      { type: 'deduction', pattern: /Withdraw Kshs?(\d{1,3}(,\d{3})*(\.\d{2})?) from (.+?) - / }, // for withdrawals
+      { type: 'credit', pattern: /has been credited to your M-PESA account/ }  // for reversal transactions
 
+    ];
+  
     for (const { type: matchType, pattern } of typeMatchPairs) {
       const match = body.match(pattern);
       if (match) {
@@ -104,31 +112,29 @@ const ReadSMS = ({ smsList }) => {
         break;
       }
     }
-
+  
     // Fallback for received cases not covered by regex
     if (type === 'credit' && !counterpart) {
       const index = body.includes('received from') ? body.indexOf('received from') + 13 : body.indexOf('You have received') + 18;
       counterpart = body.substring(index, body.indexOf(' on', index));
     }
-
+  
     return {
       id: sms._id,
-      date: new Date(sms.date).toLocaleString(),
+      date: convertDate(sms.date),
       amount,
       counterpart,
       type
     };
   };
 
-  // if (loading) {
-  //   // Show loading indicator while processing transactions
-  //   return (
-  //     <View style={styles.center}>
-  //       <ActivityIndicator size="large" color="#0000ff" />
-  //       <Text style={styles.loadingText}>Processing transactions...</Text>
-  //     </View>
-  //   );
-  // }
+  if (noTransactions) {
+    return (
+      <View style={styles.center}>
+        <Text style={styles.loadingText}>No M-PESA transactions found.</Text>
+      </View>
+    );
+  }
 
   return (
     <ScrollView>
@@ -139,13 +145,12 @@ const ReadSMS = ({ smsList }) => {
       <View style={{ flex: 1 }}>
         <SummaryChartWeekly data={transactionList} />
       </View>
-      <View style={{ flex: 1 }}>
+       {/* <View style={{ flex: 1 }}>
         <SummaryChartMonthly data={transactionList} />
       </View>
       <View style={{ flex: 1 }}>
         <SummaryChartYearly data={transactionList} />
-        </View>
-
+      </View>  */}
     </ScrollView>
   );
 };

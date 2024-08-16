@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { View, ActivityIndicator, PermissionsAndroid, StyleSheet,Text } from 'react-native';
 import SmsAndroid from 'react-native-get-sms-android';
 import ReadSMS from './modules/Readsms';
+import SmsListener from 'react-native-android-sms-listener';
+import { get } from 'react-native/Libraries/TurboModule/TurboModuleRegistry';
 
 const App = () => {
   const [isLoading, setIsLoading] = useState(true);
@@ -39,6 +41,11 @@ const App = () => {
     }
   };
 
+
+  SmsListener.addListener(message => {
+    console.info(message)
+  });
+  
   const fetchSms = () => {
     SmsAndroid.list(
       JSON.stringify({
