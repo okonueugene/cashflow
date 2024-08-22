@@ -1,39 +1,40 @@
 import React, { useState, useEffect } from 'react';
-import { View, ActivityIndicator, PermissionsAndroid, StyleSheet,Text } from 'react-native';
+import { View, ActivityIndicator, PermissionsAndroid, DeviceEventEmitter, Text } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import SmsAndroid from 'react-native-get-sms-android';
 import ReadSMS from './modules/Readsms';
-import SmsListener from 'react-native-android-sms-listener';
-import { get } from 'react-native/Libraries/TurboModule/TurboModuleRegistry';
 
 const App = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [smsList, setSmsList] = useState([]);
 
   useEffect(() => {
-    requestPermissions();
+    initializeApp();
+    return () => {
+      DeviceEventEmitter.removeAllListeners('onSMSReceived');
+    };
   }, []);
+
+  const initializeApp = async () => {
+    await requestPermissions();
+    const storedSmsList = await AsyncStorage.getItem('smsList');
+    if (storedSmsList) {
+      setSmsList(JSON.parse(storedSmsList));
+      setIsLoading(false);
+    } else {
+      fetchSms();
+    }
+    startSmsListener();
+  };
 
   const requestPermissions = async () => {
     try {
-      const readGranted = await PermissionsAndroid.request(
-        PermissionsAndroid.PERMISSIONS.READ_SMS,
-        {
-          title: "SMS Permission",
-          message: "This app needs access to your SMS messages",
-          buttonNeutral: "Ask Me Later",
-          buttonNegative: "Cancel",
-          buttonPositive: "OK"
-        }
-      );
+      const readGranted = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.READ_SMS);
+      const receiveGranted = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.RECEIVE_SMS);
 
-     
-
-      if (readGranted === PermissionsAndroid.RESULTS.GRANTED) {
-        console.log("Permissions granted");
-        fetchSms();
-      } else {
+      if (readGranted !== PermissionsAndroid.RESULTS.GRANTED || receiveGranted !== PermissionsAndroid.RESULTS.GRANTED) {
         console.log("Permissions denied");
-        setIsLoading(false); 
+        setIsLoading(false);
       }
     } catch (err) {
       console.warn(err);
@@ -41,36 +42,42 @@ const App = () => {
     }
   };
 
+  const startSmsListener = () => {
+    DeviceEventEmitter.addListener('onSMSReceived', async message => {
+      const { messageBody, senderPhoneNumber } = JSON.parse(message);
+      console.log('Received SMS:', messageBody, 'from', senderPhoneNumber);
 
-  SmsListener.addListener(message => {
-    console.info(message)
-  });
-  
+      if (senderPhoneNumber.toLowerCase().includes('mpesa')) {
+        const newSms = { body: messageBody, address: senderPhoneNumber };
+        const updatedSmsList = [...smsList, newSms];
+        setSmsList(updatedSmsList);
+        await AsyncStorage.setItem('smsList', JSON.stringify(updatedSmsList));
+      }
+    });
+  };
+
   const fetchSms = () => {
     SmsAndroid.list(
-      JSON.stringify({
-        box: 'inbox',
-        indexFrom: 0,
-        maxCount: 9999,
-      }),
+      JSON.stringify({ box: 'inbox', indexFrom: 0, maxCount: 9999 }),
       (fail) => {
         console.log('Failed with this error: ' + fail);
-        setIsLoading(false); 
+        setIsLoading(false);
       },
-      (count, smsList) => {
+      async (count, smsList) => {
         const messages = JSON.parse(smsList);
-        setSmsList(messages);
-        setIsLoading(false); 
+        const filteredMessages = messages.filter(msg => msg.address.toLowerCase().includes('mpesa'));
+        setSmsList(filteredMessages);
+        await AsyncStorage.setItem('smsList', JSON.stringify(filteredMessages));
+        setIsLoading(false);
       },
     );
   };
 
   if (isLoading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+      <View style={styles.center}>
         <ActivityIndicator size="large" color="#0000ff" />
         <Text style={styles.loadingText}>Loading SMS messages...</Text>
-
       </View>
     );
   }
@@ -93,14 +100,7 @@ const styles = {
     fontSize: 16,
     color: 'gray',
   },
-  summaryText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    marginVertical: 10,
-  },
 };
 
-
 export default App;
+
