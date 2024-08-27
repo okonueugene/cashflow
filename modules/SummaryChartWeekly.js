@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, Dimensions, ActivityIndicator, ScrollView } from 'react-native';
 import { BarChart } from 'react-native-gifted-charts';
 import { Card } from '@rneui/themed';
+import { convertDate } from '../utils/dateUtility';
 
 const SummaryChartWeekly = ({ data }) => {
   const screenWidth = Dimensions.get("window").width;
@@ -67,7 +68,7 @@ const SummaryChartWeekly = ({ data }) => {
 
   // Filter transactions from the start of the current week and calculate totals for each day
   data.forEach((transaction) => {
-    const transactionDate = convertStringToDateTime(transaction.date);
+    const transactionDate = convertDate(transaction.date);
     if (transactionDate >= startOfWeek) {
       const day = getDayOfWeek(transactionDate);
       if (weeklyTotals[day]) {
