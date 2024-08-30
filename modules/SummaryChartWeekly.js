@@ -2,7 +2,6 @@ import React from 'react';
 import { View, Text, StyleSheet, Dimensions, ActivityIndicator, ScrollView } from 'react-native';
 import { BarChart } from 'react-native-gifted-charts';
 import { Card } from '@rneui/themed';
-import { convertDate } from '../utils/dateUtility';
 
 const SummaryChartWeekly = ({ data }) => {
   const screenWidth = Dimensions.get("window").width;
@@ -16,25 +15,6 @@ const SummaryChartWeekly = ({ data }) => {
     );
   }
 
-  // Function to convert a date string to a Date object
-  const convertStringToDateTime = (str) => {
-    const [datePart, timePart] = str.split(", ");
-    const [month, day, year] = datePart.split("/").map(Number);
-
-    let hours = 0, minutes = 0, seconds = 0;
-    if (timePart) {
-      const [time, period] = timePart.split(" ");
-      [hours, minutes, seconds] = time.split(":").map(Number);
-      
-      if (period && period.toLowerCase() === "pm" && hours !== 12) {
-        hours += 12;
-      } else if (period && period.toLowerCase() === "am" && hours === 12) {
-        hours = 0;
-      }
-    }
-
-    return new Date(year, month - 1, day, hours, minutes, seconds);
-  };
 
   // Function to calculate the start of the current week
   const getStartOfWeek = (date) => {
@@ -68,7 +48,8 @@ const SummaryChartWeekly = ({ data }) => {
 
   // Filter transactions from the start of the current week and calculate totals for each day
   data.forEach((transaction) => {
-    const transactionDate = convertDate(transaction.date);
+    const transactionDate = new Date(transaction.date);
+    console.log('Transaction Date:', transactionDate);
     if (transactionDate >= startOfWeek) {
       const day = getDayOfWeek(transactionDate);
       if (weeklyTotals[day]) {
@@ -183,6 +164,8 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    marginTop: 30,
+    marginBottom: 30,
   },
   loadingText: {
     marginTop: 10,

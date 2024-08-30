@@ -5,7 +5,7 @@ import SummaryChartMonthly from './SumarryChartMonthly';
 import SummaryChartWeekly from './SummaryChartWeekly';
 import SummaryChartYearly from './SummaryChartYearly';
 import CashFlowChart from './Graphs';
-import { convertDate } from '../utils/dateUtility';
+import Analysis from './Analysis';
 
 // Define custom error handler
 const errorHandler = (error, isFatal) => {
@@ -39,15 +39,37 @@ const ReadSMS = ({ smsList }) => {
   const [transactionList, setTransactionList] = useState([]);
   const [todayTransactions, setTodayTransactions] = useState([]);
   const [noTransactions, setNoTransactions] = useState(false);
+  const [balance, setBalance] = useState(null);
 
   useEffect(() => {
     if (smsList && smsList.length > 0) {
+      extractBalance(smsList);
       extractTransactions(smsList, true);
       extractTransactions(smsList);
     } else {
       setNoTransactions(true);
     }
   }, [smsList]);
+
+  const extractBalance = (messages) => {
+    // Look for the last two M-PESA messages containing the word "balance"
+    const mpesaMessages = messages
+      .filter(sms => sms.address.toLowerCase() === 'mpesa')
+      .slice(0, 2); // Get the last two M-PESA messages
+
+    let extractedBalance = 0;
+
+    for (let i = 0; i < mpesaMessages.length; i++) {
+      const body = mpesaMessages[i].body;
+      const balanceMatch = body.match(/balance is Kshs?(\d{1,3}(,\d{3})*(\.\d{2})?)/i);
+      if (balanceMatch) {
+        extractedBalance = parseFloat(balanceMatch[1].replace(/,/g, ''));
+        break; // Stop once we find the first balance
+      }
+    }
+
+    setBalance(extractedBalance);
+  };
 
   const extractTransactions = (messages, filterByToday = false) => {
     const currentDate = new Date();
@@ -101,7 +123,6 @@ const ReadSMS = ({ smsList }) => {
       { type: 'deduction', pattern: /You bought (.+?) on/ }, // for airtime purchases
       { type: 'deduction', pattern: /Withdraw Kshs?(\d{1,3}(,\d{3})*(\.\d{2})?) from (.+?) - / }, // for withdrawals
       { type: 'credit', pattern: /has been credited to your M-PESA account/ }  // for reversal transactions
-
     ];
   
     for (const { type: matchType, pattern } of typeMatchPairs) {
@@ -121,7 +142,7 @@ const ReadSMS = ({ smsList }) => {
   
     return {
       id: sms._id,
-      date: convertDate(sms.date),
+      date: sms.date,
       amount,
       counterpart,
       type
@@ -139,6 +160,9 @@ const ReadSMS = ({ smsList }) => {
   return (
     <ScrollView>
       <Text style={{ textAlign: 'center', fontSize: 20, margin: 20 }}>M-PESA Transactions</Text>
+      <View style={{ flex: 1 }}>
+        <Analysis transactions={transactionList} balance={balance} />
+      </View>
       <View style={{ flex: 1 }}>
         <CashFlowChart data={todayTransactions} />
       </View>

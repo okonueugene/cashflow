@@ -7,14 +7,14 @@ import { Dimensions } from 'react-native';
 const CashFlowChart = ({ data }) => {
   const screenWidth = Dimensions.get("window").width;
 
-  // // Show message if data is empty
-  // if (data.length === 0) {
-  //   return (
-  //     <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-  //       <ActivityIndicator size="large" color="#0000ff" />
-  //     </View>
-  //   );
-  // }
+  if (!data || data.length === 0) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color="#0000ff" />
+        <Text style={styles.loadingText}>Tabulating Todays Transactions...</Text>
+      </View>
+    );
+  }
 
   // Calculate totals for each type
   const totals = data.reduce(
@@ -87,9 +87,15 @@ const styles = StyleSheet.create({
     marginBottom: 5,
     color: '#333',
   },
-
+  center: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 30,
+    marginBottom: 30,
+  },
   card: {
-    marginTop: 1,
+    marginTop: 12,
     borderRadius: 15,
     backgroundColor: '#f8f9fa',
     padding: 20,
@@ -98,6 +104,11 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 5,
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: 'gray',
   },
 });
 
