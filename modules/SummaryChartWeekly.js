@@ -49,7 +49,6 @@ const SummaryChartWeekly = ({ data }) => {
   // Filter transactions from the start of the current week and calculate totals for each day
   data.forEach((transaction) => {
     const transactionDate = new Date(transaction.date);
-    console.log('Transaction Date:', transactionDate);
     if (transactionDate >= startOfWeek) {
       const day = getDayOfWeek(transactionDate);
       if (weeklyTotals[day]) {

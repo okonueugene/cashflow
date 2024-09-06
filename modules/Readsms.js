@@ -6,6 +6,7 @@ import SummaryChartWeekly from './SummaryChartWeekly';
 import SummaryChartYearly from './SummaryChartYearly';
 import CashFlowChart from './Graphs';
 import Analysis from './Analysis';
+import Targets from './Targets';
 
 // Define custom error handler
 const errorHandler = (error, isFatal) => {
@@ -35,11 +36,12 @@ setNativeExceptionHandler((errorString) => {
   // Handle native exceptions
 });
 
-const ReadSMS = ({ smsList }) => {
+const ReadSMS = ({ smsList , targetSavings }) => {
   const [transactionList, setTransactionList] = useState([]);
   const [todayTransactions, setTodayTransactions] = useState([]);
   const [noTransactions, setNoTransactions] = useState(false);
   const [balance, setBalance] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (smsList && smsList.length > 0) {
@@ -161,7 +163,10 @@ const ReadSMS = ({ smsList }) => {
     <ScrollView>
       <Text style={{ textAlign: 'center', fontSize: 20, margin: 20 }}>M-PESA Transactions</Text>
       <View style={{ flex: 1 }}>
-        <Analysis transactions={transactionList} balance={balance} />
+        <Targets transactions={transactionList} balance={balance} targetSavings={targetSavings} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Analysis transactions={transactionList} balance={balance} targetSavings={targetSavings} />
       </View>
       <View style={{ flex: 1 }}>
         <CashFlowChart data={todayTransactions} />

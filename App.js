@@ -1,19 +1,34 @@
 import React, { useState, useEffect } from 'react';
-import { View, ActivityIndicator, PermissionsAndroid, DeviceEventEmitter, Text } from 'react-native';
+import { View, ActivityIndicator, PermissionsAndroid, DeviceEventEmitter, Text, TextInput, Button, Alert } from 'react-native';
 import SmsAndroid from 'react-native-get-sms-android';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import ReadSMS from './modules/Readsms';
 
 const App = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [smsList, setSmsList] = useState([]);
+  const [targetSavings, setTargetSavings] = useState('');
+  const [isTargetSet, setIsTargetSet] = useState(false);
 
   useEffect(() => {
+    loadTargetSavings();
     requestPermissions();
     return () => {
-      // Clean up the SMS listener when the component unmounts
       DeviceEventEmitter.removeAllListeners('onSMSReceived');
     };
   }, []);
+
+  const loadTargetSavings = async () => {
+    try {
+      const savedTarget = await AsyncStorage.getItem('targetSavings');
+      if (savedTarget !== null) {
+        setTargetSavings(savedTarget);
+        setIsTargetSet(true);
+      }
+    } catch (error) {
+      console.warn('Failed to load target savings from AsyncStorage', error);
+    }
+  };
 
   const requestPermissions = async () => {
     try {
@@ -58,14 +73,10 @@ const App = () => {
       'onSMSReceived',
       message => {
         const { messageBody, senderPhoneNumber } = JSON.parse(message);
-        console.log('Received SMS:', messageBody, 'from', senderPhoneNumber);
-
-        // If the sender is mpesa, then fetch the sms messages again
         if (senderPhoneNumber.toLowerCase().includes('mpesa')) {
-          fetchSms(); // Re-fetch if it's an M-PESA message
+          fetchSms();
           console.log('Fetching SMS messages again...');
         } else {
-          // Add the new message to the list
           setSmsList(prevState => [...prevState, { body: messageBody, address: senderPhoneNumber }]);
         }
       },
@@ -95,9 +106,38 @@ const App = () => {
     );
   };
 
+  const handleSetTarget = async () => {
+    if (targetSavings === '') {
+      Alert.alert('Error', 'Please enter a target savings amount');
+    } else {
+      try {
+        await AsyncStorage.setItem('targetSavings', targetSavings);
+        setIsTargetSet(true);
+      } catch (error) {
+        console.warn('Failed to save target savings to AsyncStorage', error);
+      }
+    }
+  };
+
+  if (!isTargetSet) {
+    return (
+      <View style={styles.center}>
+        <Text style={styles.loadingText}>Enter your target savings amount:</Text>
+        <TextInput
+          style={styles.input}
+          keyboardType="numeric"
+          placeholder="e.g., 10000"
+          value={targetSavings}
+          onChangeText={setTargetSavings}
+        />
+        <Button title="Set Target" onPress={handleSetTarget} />
+      </View>
+    );
+  }
+
   if (isLoading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+      <View style={styles.center}>
         <ActivityIndicator size="large" color="#0000ff" />
         <Text style={styles.loadingText}>Loading SMS messages...</Text>
       </View>
@@ -106,7 +146,7 @@ const App = () => {
 
   return (
     <View style={{ flex: 1 }}>
-      <ReadSMS smsList={smsList} />
+      <ReadSMS smsList={smsList} targetSavings={targetSavings} />
     </View>
   );
 };
@@ -116,11 +156,20 @@ const styles = {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: 20,
   },
   loadingText: {
     marginTop: 10,
     fontSize: 16,
     color: 'gray',
+  },
+  input: {
+    height: 40,
+    borderColor: 'gray',
+    borderWidth: 1,
+    width: '100%',
+    marginBottom: 20,
+    paddingHorizontal: 10,
   },
 };
 

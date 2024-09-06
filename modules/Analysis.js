@@ -2,13 +2,11 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Dimensions, ActivityIndicator } from 'react-native';
 import { Card } from '@rneui/themed';
 
-const Analysis = ({ transactions, balance }) => {
+const Analysis = ({ transactions }) => {
   const [mostExpensive, setMostExpensive] = useState(null);
   const [mostFrequent, setMostFrequent] = useState(null);
-  const screenWidth = Dimensions.get("window").width;
 
-  // Show loading indicator if transactions are still being fetched or balance is null
-  const isLoading = transactions.length === 0 || balance === null;
+  const isLoading = transactions.length === 0;
 
   useEffect(() => {
     if (transactions && transactions.length > 0) {
@@ -72,12 +70,18 @@ const Analysis = ({ transactions, balance }) => {
     }
   };
 
+
+
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-KE', {
       style: 'currency',
       currency: 'KES',
     }).format(amount);
   };
+
+  const currentDate = new Date();
+  const dayOfMonth = currentDate.getDate();
+
 
   if (isLoading) {
     return (
@@ -92,7 +96,6 @@ const Analysis = ({ transactions, balance }) => {
     <Card containerStyle={styles.card}>
       <Card.Title style={styles.cardTitle}>Monthly Expenses Analysis</Card.Title>
       <View style={styles.container}>
-        <Text style={styles.totalLabel}>Current Balance: {formatCurrency(balance)}</Text>
         <Text style={styles.totalLabel}>
           Most Expensive Transaction: {mostExpensive ? `${mostExpensive.counterpart} (${formatCurrency(mostExpensive.amount)})` : 'N/A'}
         </Text>
@@ -143,6 +146,18 @@ const styles = StyleSheet.create({
     marginTop: 10,
     fontSize: 16,
     color: 'gray',
+  },
+  progressBar: {
+    width: Dimensions.get('window').width - 40,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#e0e0e0',
+    marginTop: 10,
+  },
+  progressLabel: {
+    fontSize: 14,
+    marginTop: 5,
+    color: '#333',
   },
 });
 
