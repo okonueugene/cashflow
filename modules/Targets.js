@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Dimensions, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { Card } from '@rneui/themed';
 import { PieChart } from 'react-native-gifted-charts';
 
 const Targets = ({ transactions, balance, targetSavings }) => {
     const [totalSavings, setTotalSavings] = useState(0);
+    const [status, setStatus] = useState('Below Target');
 
     const isLoading = transactions.length === 0 || balance === null;
 
@@ -19,17 +20,28 @@ const Targets = ({ transactions, balance, targetSavings }) => {
         const currentMonth = currentDate.getMonth();
         const currentYear = currentDate.getFullYear();
 
-        const creditTransactions = transactions.filter(transaction => {
+        // Filter transactions for the current month
+        const currentMonthTransactions = transactions.filter(transaction => {
             const transactionDate = new Date(transaction.date);
             return (
                 transactionDate.getMonth() === currentMonth &&
-                transactionDate.getFullYear() === currentYear &&
-                transaction.type === 'credit'
+                transactionDate.getFullYear() === currentYear
             );
         });
 
-        const total = creditTransactions.reduce((sum, transaction) => sum + transaction.amount, 0);
-        setTotalSavings(total);
+        // Calculate total credits (income)
+        const creditTotal = currentMonthTransactions
+            .filter(transaction => transaction.type === 'credit')
+            .reduce((sum, transaction) => sum + transaction.amount, 0);
+
+        // Calculate total debits (expenses)
+        const debitTotal = currentMonthTransactions
+            .filter(transaction => transaction.type === 'deduction')
+            .reduce((sum, transaction) => sum + transaction.amount, 0);
+
+        // Net savings = total credits - total debits
+        const netSavings = creditTotal - debitTotal;
+        setTotalSavings(netSavings);
     };
 
     const formatCurrency = (amount) => {
@@ -39,11 +51,20 @@ const Targets = ({ transactions, balance, targetSavings }) => {
         }).format(amount);
     };
 
-    // Calculate progress (total savings vs target savings) and adjust PieChart values
-    const progress = Math.min(totalSavings / targetSavings, 1);
+    // Calculate progress (net savings vs target savings)
+    const progress = totalSavings < 0 ? totalSavings / targetSavings : Math.min(totalSavings / targetSavings, 1);
+
     const chartData = [
-        { value: progress * 100, color: '#4caf50', text: formatCurrency(totalSavings) }, // Savings amount
-        { value: (1 - progress) * 100, color: '#f44336', text: formatCurrency(targetSavings - totalSavings) }, // Remaining to reach target
+        { 
+            value: Math.abs(progress) * 100, 
+            color: progress >= 0 ? '#4caf50' : (progress < -1 ? '#8B0000' : '#ff0000'), // Dark red for high negative, green for positive
+            text: formatCurrency(totalSavings) 
+        },
+        { 
+            value: (1 - Math.abs(progress)) * 100, 
+            color: '#f44336', 
+            text: formatCurrency(targetSavings - totalSavings) 
+        },
     ];
 
     const targetSavingsPerDay = targetSavings / 30;
@@ -51,14 +72,37 @@ const Targets = ({ transactions, balance, targetSavings }) => {
     const dayOfMonth = currentDate.getDate();
     const expectedSavingsByNow = targetSavingsPerDay * dayOfMonth;
 
-    // Function to determine the progress bar color
     const getProgressBarColor = (progress) => {
+        if (progress < 0) {
+            // Darker red for negative progress
+            if (progress < -1) return '#8B0000';  // Very dark red for extreme negative progress
+            return '#ff0000';  // Standard red for negative progress
+        }
         if (progress <= 0.25) return '#f44336';  // Red
         if (progress <= 0.5) return '#ffeb3b';   // Yellow
         if (progress <= 0.75) return '#ff9800';  // Orange
         if (progress > 0.9) return '#4caf50';    // Green
         return '#2196f3';  // Blue for between 75% and 90%
     };
+
+    // Determine status based on progress
+    useEffect(() => {
+        if (progress >= 1) {
+            setStatus('Target Achieved');
+        } else if (progress >= 0.75) {
+            setStatus('Almost There');
+        } else if (progress >= 0.5) {
+            setStatus('Halfway There');
+        } else if (progress >= 0.25) {
+            setStatus('Getting There');
+        } else if (progress >= 0) {
+            setStatus('Below Target');
+        } else if (progress < 0 && progress >= -0.5) {
+            setStatus('Overspending');
+        } else {
+            setStatus('Overbudget');
+        }
+    }, [progress]);
 
     if (isLoading) {
         return (
@@ -89,7 +133,7 @@ const Targets = ({ transactions, balance, targetSavings }) => {
                         style={[
                             styles.progressBar,
                             {
-                                width: `${(progress * 100).toFixed(2)}%`,
+                                width: `${Math.abs(progress * 100).toFixed(2)}%`,
                                 backgroundColor: getProgressBarColor(progress),
                             },
                         ]}
@@ -109,7 +153,7 @@ const Targets = ({ transactions, balance, targetSavings }) => {
                         centerLabelComponent={() => (
                             <View style={{ justifyContent: 'center', alignItems: 'center' }}>
                                 <Text style={styles.chartProgressText}>{`${(progress * 100).toFixed(2)}%`}</Text>
-                                <Text style={styles.chartSubText}>{progress >= 95 ? 'Target Met!' : 'On Track'}</Text>
+                                <Text style={styles.chartSubText}>{status}</Text>
                             </View>
                         )}
                     />
@@ -195,7 +239,3 @@ const styles = StyleSheet.create({
 });
 
 export default Targets;
-
-
-
-

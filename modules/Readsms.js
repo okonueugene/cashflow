@@ -78,33 +78,33 @@ const ReadSMS = ({ smsList , targetSavings }) => {
     let startOfDay, endOfDay;
 
     if (filterByToday) {
-      startOfDay = new Date(currentDate).setHours(0, 0, 0, 0);
-      endOfDay = new Date(currentDate).setHours(23, 59, 59, 999);
+        startOfDay = new Date(currentDate).setHours(0, 0, 0, 0);
+        endOfDay = new Date(currentDate).setHours(23, 59, 59, 999);
     }
 
     const transactions = [];
 
     messages.forEach(sms => {
-      if (sms.address.toLowerCase() === 'mpesa') {
-        const smsDate = new Date(sms.date);
-        if (!filterByToday || (smsDate >= startOfDay && smsDate <= endOfDay)) {
-          const transaction = parseTransaction(sms);
-          if (transaction.amount !== null && transaction.counterpart !== undefined) {
-            transactions.push(transaction);
-          }
+        if (sms.address.toLowerCase() === 'mpesa') {
+            const smsDate = new Date(sms.date);
+            if (!filterByToday || (smsDate >= startOfDay && smsDate <= endOfDay)) {
+                const transaction = parseTransaction(sms);
+          if (transaction.amount !== 0 && transaction.counterpart !== null) {
+                    transactions.push(transaction);
+                }
+            }
         }
-      }
     });
 
     if (filterByToday) {
-      setTodayTransactions(transactions);
+        setTodayTransactions(transactions);
     } else {
-      setTransactionList(transactions);
-      if (transactions.length === 0) {
-        setNoTransactions(true);
-      }
+        setTransactionList(transactions);
+        if (transactions.length === 0) {
+            setNoTransactions(true);
+        }
     }
-  };
+};
 
   const parseTransaction = (sms) => {
     const body = sms.body;
