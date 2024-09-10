@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, Alert } from 'react-native';
+import { View, Text, ScrollView, Alert, StatusBar, ActivityIndicator } from 'react-native';
 import { setJSExceptionHandler, setNativeExceptionHandler } from 'react-native-exception-handler';
 import SummaryChartMonthly from './SumarryChartMonthly';
 import SummaryChartWeekly from './SummaryChartWeekly';
@@ -7,6 +7,7 @@ import SummaryChartYearly from './SummaryChartYearly';
 import CashFlowChart from './Graphs';
 import Analysis from './Analysis';
 import Targets from './Targets';
+import { openDatabase } from 'react-native-sqlite-storage';
 
 // Define custom error handler
 const errorHandler = (error, isFatal) => {
@@ -36,27 +37,117 @@ setNativeExceptionHandler((errorString) => {
   // Handle native exceptions
 });
 
-const ReadSMS = ({ smsList , targetSavings }) => {
-  const [transactionList, setTransactionList] = useState([]);
-  const [todayTransactions, setTodayTransactions] = useState([]);
+// Initialize the database
+const db = openDatabase(
+  { name: 'transactions.db', location: 'default' },
+  () => {
+    console.log('Database opened successfully');
+  },
+  (error) => {
+    console.log('Error opening database:', error);
+  }
+);
+
+const ReadSMS = ({ smsList, targetSavings }) => {
   const [noTransactions, setNoTransactions] = useState(false);
   const [balance, setBalance] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true); // Updated state for loading
+  const [pendingTransactions, setPendingTransactions] = useState(0); // To track pending transactions
+  const [message, setMessage] = useState("Fetching M-PESA transactions...");
+
+  // Create the transaction list table
+  const createTable = () => {
+    db.transaction((txn) => {
+      txn.executeSql(
+        `CREATE TABLE IF NOT EXISTS transactions (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          date INTEGER,
+          amount REAL,
+          counterpart TEXT,
+          type TEXT
+        )`,
+        [],
+        () => {
+          console.log('Table created successfully');
+        },
+        (tx, error) => {
+          console.log('Error creating table:', error);
+        }
+      );
+    });
+  };
 
   useEffect(() => {
+    createTable();
+
     if (smsList && smsList.length > 0) {
+      setPendingTransactions(0); // Reset pendingTransactions to 0 initially
       extractBalance(smsList);
-      extractTransactions(smsList, true);
-      extractTransactions(smsList);
+      changeMessage();
+      extractTransactions(smsList); // Process transactions
     } else {
       setNoTransactions(true);
+      setIsLoading(false); // No transactions available
     }
   }, [smsList]);
 
+  useEffect(() => {
+    // Check if all transactions are processed, then stop loading
+    if (pendingTransactions === 0 && !noTransactions) {
+      setIsLoading(false);
+    }
+  }, [pendingTransactions]);
+
+  const changeMessage = () => {
+    setTimeout(() => {
+      setMessage("Still fetching M-PESA transactions...");
+    }, 5000);
+
+    setTimeout(() => {
+      setMessage("Almost done fetching M-PESA transactions...");
+    }, 10000);
+
+    setTimeout(() => {
+      setMessage("Done fetching M-PESA transactions...");
+    }, 15000);
+  };
+
+  // Insert a transaction if it doesn’t already exist
+  const insertTransaction = (transaction) => {
+    db.transaction((txn) => {
+      txn.executeSql(
+        `SELECT * FROM transactions WHERE date = ? `,
+        [transaction.date],
+        (tx, res) => {
+          if (res.rows.length === 0) {
+            txn.executeSql(
+              `INSERT INTO transactions (date, amount, counterpart, type) VALUES (?, ?, ?, ?)`,
+              [transaction.date, transaction.amount, transaction.counterpart, transaction.type],
+              (tx, res) => {
+                console.log('Transaction inserted successfully');
+                setPendingTransactions((prev) => prev - 1); // Decrement when done
+              },
+              (tx, error) => {
+                console.log('Error inserting transaction:', error);
+                setPendingTransactions((prev) => prev - 1); // Decrement on error
+              }
+            );
+          } else {
+            console.log('Transaction already exists');
+            setPendingTransactions((prev) => prev - 1); // Decrement if it already exists
+          }
+        },
+        (tx, error) => {
+          console.log('Error checking for existing transaction:', error);
+          setPendingTransactions((prev) => prev - 1); // Decrement on error
+        }
+      );
+    });
+  };
+
   const extractBalance = (messages) => {
-    // Look for the last two M-PESA messages containing the word "balance"
     const mpesaMessages = messages
-      .filter(sms => sms.address.toLowerCase() === 'mpesa')
+      .filter((sms) => sms.address.toLowerCase() === 'mpesa')
       .slice(0, 2); // Get the last two M-PESA messages
 
     let extractedBalance = 0;
@@ -66,67 +157,51 @@ const ReadSMS = ({ smsList , targetSavings }) => {
       const balanceMatch = body.match(/balance is Kshs?(\d{1,3}(,\d{3})*(\.\d{2})?)/i);
       if (balanceMatch) {
         extractedBalance = parseFloat(balanceMatch[1].replace(/,/g, ''));
-        break; // Stop once we find the first balance
+        break;
       }
     }
 
     setBalance(extractedBalance);
   };
 
-  const extractTransactions = (messages, filterByToday = false) => {
-    const currentDate = new Date();
-    let startOfDay, endOfDay;
-
-    if (filterByToday) {
-        startOfDay = new Date(currentDate).setHours(0, 0, 0, 0);
-        endOfDay = new Date(currentDate).setHours(23, 59, 59, 999);
-    }
-
+  const extractTransactions = (messages) => {
     const transactions = [];
 
-    messages.forEach(sms => {
-        if (sms.address.toLowerCase() === 'mpesa') {
-            const smsDate = new Date(sms.date);
-            if (!filterByToday || (smsDate >= startOfDay && smsDate <= endOfDay)) {
-                const transaction = parseTransaction(sms);
-          if (transaction.amount !== 0 && transaction.counterpart !== null) {
-                    transactions.push(transaction);
-                }
-            }
+    messages.forEach((sms) => {
+      if (sms.address.toLowerCase() === 'mpesa') {
+        const transaction = parseTransaction(sms);
+        if (transaction.amount !== 0 && transaction.counterpart !== null) {
+          transactions.push(transaction);
+          setPendingTransactions((prev) => prev + 1); // Increment when a transaction is identified
+          insertTransaction(transaction);
         }
+      }
     });
 
-    if (filterByToday) {
-        setTodayTransactions(transactions);
-    } else {
-        setTransactionList(transactions);
-        if (transactions.length === 0) {
-            setNoTransactions(true);
-        }
+    if (transactions.length === 0) {
+      setIsLoading(false); // No transactions, stop loading
     }
-};
+  };
 
   const parseTransaction = (sms) => {
     const body = sms.body;
-  
-    // Extract amount
+
     const amountMatch = body.match(/Kshs?(\d{1,3}(,\d{3})*(\.\d{2})?)/);
     const amount = amountMatch ? parseFloat(amountMatch[1].replace(/,/g, '')) : null;
-  
+
     let type = null;
     let counterpart = null;
-  
-    // Determine type and counterpart
+
     const typeMatchPairs = [
-      { type: 'deduction', pattern: /sent to (.+?) on/ }, // for sent transactions
-      { type: 'deduction', pattern: /paid to (.+?) on/ }, // for payments to businesses
-      { type: 'credit', pattern: /received from (.+?) on/ }, // for received transactions
-      { type: 'credit', pattern: /You have received/ }, // for received transactions 
-      { type: 'deduction', pattern: /You bought (.+?) on/ }, // for airtime purchases
-      { type: 'deduction', pattern: /Withdraw Kshs?(\d{1,3}(,\d{3})*(\.\d{2})?) from (.+?) - / }, // for withdrawals
-      { type: 'credit', pattern: /has been credited to your M-PESA account/ }  // for reversal transactions
+      { type: 'deduction', pattern: /sent to (.+?) on/ },
+      { type: 'deduction', pattern: /paid to (.+?) on/ },
+      { type: 'credit', pattern: /received from (.+?) on/ },
+      { type: 'credit', pattern: /You have received/ },
+      { type: 'deduction', pattern: /You bought (.+?) on/ },
+      { type: 'deduction', pattern: /Withdraw Kshs?(\d{1,3}(,\d{3})*(\.\d{2})?) from (.+?) - / },
+      { type: 'credit', pattern: /has been credited to your M-PESA account/ },
     ];
-  
+
     for (const { type: matchType, pattern } of typeMatchPairs) {
       const match = body.match(pattern);
       if (match) {
@@ -135,21 +210,28 @@ const ReadSMS = ({ smsList , targetSavings }) => {
         break;
       }
     }
-  
-    // Fallback for received cases not covered by regex
+
     if (type === 'credit' && !counterpart) {
       const index = body.includes('received from') ? body.indexOf('received from') + 13 : body.indexOf('You have received') + 18;
       counterpart = body.substring(index, body.indexOf(' on', index));
     }
-  
+
     return {
-      id: sms._id,
       date: sms.date,
       amount,
       counterpart,
-      type
+      type,
     };
   };
+
+  if (isLoading) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color="#009900" />
+        <Text style={styles.loadingText}>{message}</Text>
+      </View>
+    );
+  }
 
   if (noTransactions) {
     return (
@@ -159,34 +241,36 @@ const ReadSMS = ({ smsList , targetSavings }) => {
     );
   }
 
+
+
   return (
     <ScrollView>
+      <StatusBar barStyle="light-content" backgroundColor="#009900" />
       <Text style={{ textAlign: 'center', fontSize: 20, margin: 20 }}>M-PESA Transactions</Text>
       <View style={{ flex: 1 }}>
-        <Targets transactions={transactionList} balance={balance} targetSavings={targetSavings} />
+        <Targets balance={balance} targetSavings={targetSavings} />
       </View>
       <View style={{ flex: 1 }}>
-        <Analysis transactions={transactionList} balance={balance} targetSavings={targetSavings} />
+        <Analysis balance={balance} targetSavings={targetSavings} />
+      </View> 
+      <View style={{ flex: 1 }}>
+        <CashFlowChart />
       </View>
       <View style={{ flex: 1 }}>
-        <CashFlowChart data={todayTransactions} />
-      </View>
+        <SummaryChartWeekly />
+      </View> 
       <View style={{ flex: 1 }}>
-        <SummaryChartWeekly data={transactionList} />
+        <SummaryChartMonthly />
       </View>
-       {/* <View style={{ flex: 1 }}>
-        <SummaryChartMonthly data={transactionList} />
-      </View>
-      <View style={{ flex: 1 }}>
-        <SummaryChartYearly data={transactionList} />
-      </View>  */}
     </ScrollView>
   );
 };
 
 const styles = {
   center: {
-    flex: 1,
+   
+
+ flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },

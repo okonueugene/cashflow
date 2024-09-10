@@ -1,36 +1,70 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Dimensions, ActivityIndicator, ScrollView } from 'react-native';
 import { BarChart } from 'react-native-gifted-charts';
 import { Card } from '@rneui/themed';
+import { openDatabase } from 'react-native-sqlite-storage';
 
-const SummaryChartMonthly = ({ data }) => {
+// Open the SQLite database
+const db = openDatabase(
+  { name: 'transactions.db', location: 'default' },
+  () => console.log('Database opened successfully'),
+  (error) => console.log('Error opening database:', error)
+);
+
+const SummaryChartMonthly = () => {
   const screenWidth = Dimensions.get("window").width;
+  const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  
+  useEffect(() => {
+    fetchMonthlyTransactions();
+  }, []);
 
-  if (!data || data.length === 0) {
+  // Function to get the current month's timestamp range
+  function getTimestampRangeForCurrentMonth() {
+    const now = new Date();
+    const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+    return {
+      startTimestamp: firstDayOfMonth.getTime(),
+      endTimestamp: lastDayOfMonth.getTime(),
+    };
+  }
+
+  // Fetch monthly transactions from SQLite
+  const fetchMonthlyTransactions = () => {
+    const { startTimestamp, endTimestamp } = getTimestampRangeForCurrentMonth();
+
+    db.transaction((txn) => {
+      txn.executeSql(
+        `SELECT * FROM transactions WHERE date >= ? AND date <= ?`,
+        [startTimestamp, endTimestamp],
+        (tx, results) => {
+          const rows = results.rows.raw();
+          setData(rows);
+          setLoading(false);
+        },
+        (tx, error) => {
+          console.log('Error fetching transactions:', error);
+          setLoading(false);
+        }
+      );
+    });
+  };
+
+  if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+      <View style={styles.center}>
         <ActivityIndicator size="large" color="#0000ff" />
-        <Text style={{ marginTop: 10, fontSize: 16, color: 'gray' }}>Tabulating Monthly Transactions...</Text>
+        <Text style={styles.loadingText}>Tabulating Monthly Transactions...</Text>
       </View>
     );
   }
 
-  // Function to convert a date string to a Date object
-  const convertStringToDateTime = (str) => {
-    const [datePart, timePart] = str.split(", ");
-    const [month, day, year] = datePart.split("/").map(Number);
-    const [time, period] = timePart.split(" ");
-    let [hours, minutes, seconds] = time.split(":").map(Number);
-
-    if (period.toLowerCase() === "pm" && hours !== 12) {
-      hours += 12;
-    } else if (period.toLowerCase() === "am" && hours === 12) {
-      hours = 0;
-    }
-
-    return new Date(year, month - 1, day, hours, minutes, seconds);
+  // Function to convert a timestamp to a Date object
+  const convertTimestampToDate = (timestamp) => {
+    return new Date(timestamp);
   };
 
   // Function to calculate the start of the week
@@ -66,7 +100,7 @@ const SummaryChartMonthly = ({ data }) => {
 
     // Accumulate transactions within the current week
     data.forEach((transaction) => {
-      const transactionDate = convertStringToDateTime(transaction.date);
+      const transactionDate = convertTimestampToDate(transaction.date);
       if (transactionDate >= currentWeekStart && transactionDate <= weekEnd) {
         if (transaction.type === 'credit') {
           weekData.income += transaction.amount;
@@ -83,75 +117,50 @@ const SummaryChartMonthly = ({ data }) => {
     currentWeekStart.setDate(currentWeekStart.getDate() + 7);
   }
 
+  // Prepare data for the bar chart
+  const chartData = weeklyTotals.flatMap((weekData, index) => [
+    {
+      value: weekData.income,
+      label: `W${index + 1}`,
+      frontColor: '#4caf50',
+      spacing: 2,
+      labelWidth: 30,
+      labelTextStyle: { color: 'gray' },
+      topLabelComponent: () => (
+        <Text style={{ color: 'gray', fontSize: 9, fontWeight: 'bold' }}>
+          {weekData.income.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",")}
+        </Text>
+      ),
+    },
+    {
+      value: weekData.expense,
+      frontColor: '#f44336',
+      spacing: index < weeklyTotals.length - 1 ? 20 : 2,
+      labelWidth: 30,
+      topLabelComponent: () => (
+        <Text style={{ color: 'gray', fontSize: 9, fontWeight: 'bold' }}>
+          {weekData.expense.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",")}
+        </Text>
+      ),
+    }
+  ]);
 
-// Prepare data for bar chart
-const chartData = weeklyTotals.flatMap((weekData, index) => [
-  {
-    value: weekData.income,
-    label: `W${index + 1}`,
-    frontColor: '#4caf50',
-    spacing: 2,
-    labelWidth: 30,
-    labelTextStyle: { color: 'gray' },
-    topLabelComponent: () => (
-      <Text style={{
-        color: 'gray', fontSize: 9, fontWeight: 'bold'
-      }}>
-        {weekData.income.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",")}
-      </Text>
-    ),
-  },
-  {
-    value: weekData.expense,
-    frontColor: '#f44336',
-    spacing: index < weeklyTotals.length - 1 ? 20 : 2, // Add extra space after each week's data, except the last one
-    labelWidth: 30,
-    topLabelComponent: () => (
-      <Text style={{
-        color: 'gray', fontSize: 9, fontWeight: 'bold'
-      }}>
-        {weekData.expense.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",")}
-      </Text>
-    ),
-  }
-]);
   // Calculate the maximum value for scaling
   const maxValue = Math.max(...chartData.map(bar => bar.value)) || 1;
 
   // Calculate dynamic width based on the number of bars
   const chartWidth = chartData.length * 50;
+
   // Render the title and legend
   const renderTitle = () => (
     <View style={{ marginVertical: 30 }}>
-      <View
-        style={{
-          flexDirection: 'row',
-          justifyContent: 'space-evenly',
-          marginTop: 24,
-        }}
-      >
+      <View style={{ flexDirection: 'row', justifyContent: 'space-evenly', marginTop: 24 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <View
-            style={{
-              height: 12,
-              width: 12,
-              borderRadius: 6,
-              backgroundColor: '#4caf50',
-              marginRight: 8,
-            }}
-          />
+          <View style={{ height: 12, width: 12, borderRadius: 6, backgroundColor: '#4caf50', marginRight: 8 }} />
           <Text style={{ color: 'lightgray' }}>Income</Text>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <View
-            style={{
-              height: 12,
-              width: 12,
-              borderRadius: 6,
-              backgroundColor: '#f44336',
-              marginRight: 8,
-            }}
-          />
+          <View style={{ height: 12, width: 12, borderRadius: 6, backgroundColor: '#f44336', marginRight: 8 }} />
           <Text style={{ color: 'lightgray' }}>Expense</Text>
         </View>
       </View>
@@ -204,6 +213,18 @@ const styles = StyleSheet.create({
   },
   chartContainer: {
     paddingHorizontal: 10,
+  },
+  center: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 30,
+    marginBottom: 30,
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: 'gray',
   },
 });
 

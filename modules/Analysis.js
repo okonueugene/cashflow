@@ -2,74 +2,81 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Dimensions, ActivityIndicator } from 'react-native';
 import { Card } from '@rneui/themed';
 
-const Analysis = ({ transactions }) => {
-  const [mostExpensive, setMostExpensive] = useState(null);
-  const [mostFrequent, setMostFrequent] = useState(null);
+import {openDatabase} from 'react-native-sqlite-storage';
+// Open the SQLite database
+const db = openDatabase(
+  {name: 'transactions.db', location: 'default'},
+  () => console.log('Database opened successfully'),
+  error => console.log('Error opening database:', error),
+);
 
-  const isLoading = transactions.length === 0;
+const Analysis = () => {
+  const [mostExpensive, setMostExpensive] = useState([]);
+  const [mostFrequent, setMostFrequent] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    if (transactions && transactions.length > 0) {
-      calculateTransactionsAnalysis(transactions);
-    }
-  }, [transactions]);
+    fetchAnalysisData();
+  }, []);
 
-  const calculateTransactionsAnalysis = (transactions) => {
-    let maxAmount = 0;
-    let maxTransaction = null;
+  
+  // Function to get the current month's timestamp range
+  function getTimestampRangeForCurrentMonth() {
+    const now = new Date();
+    const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
 
-    const counterpartMap = {};
-    const currentDate = new Date();
-    const currentMonth = currentDate.getMonth();
-    const currentYear = currentDate.getFullYear();
+    return {
+      startTimestamp: firstDayOfMonth.getTime(),
+      endTimestamp: lastDayOfMonth.getTime(),
+    };
+  }
 
-    const filteredTransactions = transactions.filter(transaction => {
-      const transactionDate = new Date(transaction.date);
-      return (
-        transactionDate.getMonth() === currentMonth &&
-        transactionDate.getFullYear() === currentYear &&
-        transaction.type === 'deduction'
+  const fetchAnalysisData = () => {
+    const {startTimestamp, endTimestamp} = getTimestampRangeForCurrentMonth();
+
+    // Fetch most expensive transaction
+    db.transaction(txn => {
+      txn.executeSql(
+        `SELECT * FROM transactions WHERE date BETWEEN ? AND ? ORDER BY amount DESC LIMIT 1`,
+        [startTimestamp, endTimestamp],
+        (tx, results) => {
+          const rows = results.rows.raw();
+          console.log('Most expensive transaction:', rows[0]);
+          setMostExpensive(rows[0]);
+        },
+        (tx, error) => {
+          console.log('Error fetching most expensive transaction:', error);
+        },
+      );  
+    });
+
+    // Fetch most frequent recipient
+    db.transaction(txn => {
+      txn.executeSql(
+        `SELECT *, SUM(amount) AS total_amount
+FROM transactions
+WHERE date BETWEEN ? AND ?
+GROUP BY counterpart
+ORDER BY COUNT(*) DESC
+LIMIT 1`,
+        [startTimestamp, endTimestamp],
+        (tx, results) => {
+          const rows = results.rows.raw();
+          setMostFrequent(rows[0]);
+          setIsLoading(false);
+        },
+        (tx, error) => {
+          console.log('Error fetching most frequent recipient:', error);
+          setIsLoading(false);
+        },
       );
     });
-
-    filteredTransactions.forEach(transaction => {
-      if (transaction.amount > maxAmount) {
-        maxAmount = transaction.amount;
-        maxTransaction = transaction;
-      }
-
-      if (transaction.counterpart) {
-        if (!counterpartMap[transaction.counterpart]) {
-          counterpartMap[transaction.counterpart] = {
-            count: 0,
-            totalAmount: 0,
-          };
-        }
-        counterpartMap[transaction.counterpart].count++;
-        counterpartMap[transaction.counterpart].totalAmount += transaction.amount;
-      }
-    });
-
-    setMostExpensive(maxTransaction);
-
-    let mostFrequentCounterpart = null;
-    let highestCount = 0;
-
-    Object.keys(counterpartMap).forEach(counterpart => {
-      if (counterpartMap[counterpart].count > highestCount) {
-        highestCount = counterpartMap[counterpart].count;
-        mostFrequentCounterpart = counterpart;
-      }
-    });
-
-    if (mostFrequentCounterpart) {
-      setMostFrequent({
-        counterpart: mostFrequentCounterpart,
-        totalAmount: counterpartMap[mostFrequentCounterpart].totalAmount,
-      });
-    }
   };
 
+
+  
+   
 
 
   const formatCurrency = (amount) => {
@@ -79,8 +86,6 @@ const Analysis = ({ transactions }) => {
     }).format(amount);
   };
 
-  const currentDate = new Date();
-  const dayOfMonth = currentDate.getDate();
 
 
   if (isLoading) {
@@ -100,7 +105,7 @@ const Analysis = ({ transactions }) => {
           Most Expensive Transaction: {mostExpensive ? `${mostExpensive.counterpart} (${formatCurrency(mostExpensive.amount)})` : 'N/A'}
         </Text>
         <Text style={styles.totalLabel}>
-          Most Frequent Recipient: {mostFrequent ? `${mostFrequent.counterpart} (Total: ${formatCurrency(mostFrequent.totalAmount)})` : 'N/A'}
+          Most Frequent Recipient: {mostFrequent ? `${mostFrequent.counterpart} (Total: ${formatCurrency(mostFrequent.total_amount)})` : 'N/A'}
         </Text>
       </View>
     </Card>

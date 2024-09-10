@@ -1,10 +1,59 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Dimensions, ActivityIndicator, ScrollView } from 'react-native';
 import { BarChart } from 'react-native-gifted-charts';
 import { Card } from '@rneui/themed';
+import { openDatabase } from 'react-native-sqlite-storage';
 
-const SummaryChartWeekly = ({ data }) => {
+const db = openDatabase(
+  { name: 'transactions.db', location: 'default' },
+  () => {
+    console.log('Database opened successfully');
+  },
+  (error) => {
+    console.log('Error opening database:', error);
+  }
+);
+
+const SummaryChartWeekly = () => {
   const screenWidth = Dimensions.get("window").width;
+  const [data, setData] = useState([]);
+
+  useEffect(() => {
+    fetchWeeklyTransactions();
+  }, []);
+
+  function getTimestampRangeForCurrentWeek() {
+    const now = new Date();
+    // Find the first day of the week (Sunday)
+    const firstDayOfWeek = new Date(now.setDate(now.getDate() - now.getDay()));
+    firstDayOfWeek.setHours(0, 0, 0, 0); // Start of Sunday
+
+    const lastDayOfWeek = new Date(firstDayOfWeek);
+    lastDayOfWeek.setDate(firstDayOfWeek.getDate() + 6); // End of Saturday
+    lastDayOfWeek.setHours(23, 59, 59, 999); // End of the day
+
+    return {
+      startTimestamp: firstDayOfWeek.getTime(),
+      endTimestamp: lastDayOfWeek.getTime(),
+    };
+  }
+
+  const fetchWeeklyTransactions = () => {
+    const { startTimestamp, endTimestamp } = getTimestampRangeForCurrentWeek();
+    db.transaction((txn) => {
+      txn.executeSql(
+        `SELECT * FROM transactions WHERE date >= ? AND date <= ?`,
+        [startTimestamp, endTimestamp],
+        (tx, results) => {
+          const rows = results.rows.raw();
+          setData(rows);
+        },
+        (tx, error) => {
+          console.log('Error fetching transactions:', error);
+        }
+      );
+    });
+  };
 
   if (!data || data.length === 0) {
     return (
@@ -15,20 +64,6 @@ const SummaryChartWeekly = ({ data }) => {
     );
   }
 
-
-  // Function to calculate the start of the current week
-  const getStartOfWeek = (date) => {
-    const startOfWeek = new Date(date);
-    const dayOfWeek = date.getDay();
-    startOfWeek.setDate(date.getDate() - dayOfWeek);
-    startOfWeek.setHours(0, 0, 0, 0);
-    return startOfWeek;
-  };
-
-  // Get the current date and start of the week
-  const currentDate = new Date();
-  const startOfWeek = getStartOfWeek(currentDate);
-
   // Initialize an object to hold totals for each day
   const weeklyTotals = {
     Sunday: { income: 0, expense: 0 },
@@ -37,27 +72,23 @@ const SummaryChartWeekly = ({ data }) => {
     Wednesday: { income: 0, expense: 0 },
     Thursday: { income: 0, expense: 0 },
     Friday: { income: 0, expense: 0 },
-    Saturday: { income: 0, expense: 0 }
+    Saturday: { income: 0, expense: 0 },
   };
 
-  // Function to get the day of the week from a date object
-  const getDayOfWeek = (date) => {
+  // Function to get the day of the week from a timestamp
+  const getDayOfWeek = (timestamp) => {
     const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const date = new Date(timestamp);
     return days[date.getDay()];
   };
 
-  // Filter transactions from the start of the current week and calculate totals for each day
+  // Iterate over the data and populate weeklyTotals
   data.forEach((transaction) => {
-    const transactionDate = new Date(transaction.date);
-    if (transactionDate >= startOfWeek) {
-      const day = getDayOfWeek(transactionDate);
-      if (weeklyTotals[day]) {
-        if (transaction.type === 'credit') {
-          weeklyTotals[day].income += transaction.amount;
-        } else if (transaction.type === 'deduction') {
-          weeklyTotals[day].expense += transaction.amount;
-        }
-      }
+    const dayOfWeek = getDayOfWeek(transaction.date);
+    if (transaction.type === 'credit') {
+      weeklyTotals[dayOfWeek].income += transaction.amount;
+    } else if (transaction.type === 'deduction') {
+      weeklyTotals[dayOfWeek].expense += transaction.amount;
     }
   });
 
@@ -88,7 +119,6 @@ const SummaryChartWeekly = ({ data }) => {
             {weeklyTotals[day].expense.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",")}
           </Text>
         </View>
-
       ),
     }
   ]);
@@ -173,12 +203,6 @@ const styles = StyleSheet.create({
   },
   titleContainer: {
     marginVertical: 30,
-  },
-  title: {
-    color: 'white',
-    fontSize: 20,
-    fontWeight: 'bold',
-    textAlign: 'center',
   },
   legendContainer: {
     flexDirection: 'row',

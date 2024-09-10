@@ -23,6 +23,7 @@
     "react-native-get-sms-android": "^2.1.0",
     "react-native-gifted-charts": "^1.4.28",
     "react-native-linear-gradient": "^2.8.3",
+    "react-native-sqlite-storage": "^6.0.1",
     "react-native-svg": "^15.4.0"
   },
   "devDependencies": {

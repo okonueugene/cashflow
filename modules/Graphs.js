@@ -1,11 +1,56 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { PieChart } from 'react-native-gifted-charts';
 import { Card } from '@rneui/themed';
 import { Dimensions } from 'react-native';
+import { openDatabase } from 'react-native-sqlite-storage';
 
-const CashFlowChart = ({ data }) => {
+const db = openDatabase(
+  { name: 'transactions.db', location: 'default' },
+  () => {
+    console.log('Database opened successfully');
+  },
+  (error) => {
+    console.log('Error opening database:', error);
+  }
+);
+
+const CashFlowChart = () => {
   const screenWidth = Dimensions.get("window").width;
+  const [data, setData] = useState([]);
+
+  useEffect(() => {
+    fetchTodaysTransactions();
+  }, []);
+
+  function getTimestampRangeFromStartOfDay() {
+    const now = new Date();
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const endOfDay = new Date(startOfDay);
+    endOfDay.setHours(23, 59, 59, 999);
+  
+    return {
+      startTimestamp: startOfDay.getTime(),
+      endTimestamp: endOfDay.getTime()
+    };
+  }
+
+  const fetchTodaysTransactions = () => {
+    const { startTimestamp, endTimestamp } = getTimestampRangeFromStartOfDay();
+    db.transaction((txn) => {
+      txn.executeSql(
+        `SELECT * FROM transactions WHERE date >= ? AND date <= ?`, 
+        [startTimestamp, endTimestamp],
+        (tx, results) => {
+          const rows = results.rows.raw();
+          setData(rows);
+        },
+        (tx, error) => {
+          console.log(`Error fetching transactions: ${error.message}`);
+        }
+      );
+    });
+  };
 
   if (!data || data.length === 0) {
     return (
@@ -28,6 +73,7 @@ const CashFlowChart = ({ data }) => {
     },
     { income: 0, expense: 0 }
   );
+
   // Format numbers as currency
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat('en-KE', {
@@ -36,37 +82,34 @@ const CashFlowChart = ({ data }) => {
     }).format(amount);
   };
 
-
   // Prepare data for pie chart
   const chartData = [
     { value: totals.income, color: '#4caf50', text: formatCurrency(totals.income), legendFontColor: '#7F7F7F', legendFontSize: 12 },
     { value: totals.expense, color: '#f44336', text: formatCurrency(totals.expense), legendFontColor: '#7F7F7F', legendFontSize: 12 }
   ];
 
-
   return (
     <Card containerStyle={styles.card}>
-      <Card.Title>Todays Transactions</Card.Title>
+      <Card.Title>Today's Transactions</Card.Title>
       <View style={styles.container}>
         <Text style={styles.totalLabel}>Total Income: {formatCurrency(totals.income)}</Text>
         <Text style={styles.totalLabel}>Total Expense: {formatCurrency(totals.expense)}</Text>
-        <PieChart
-          data={chartData}
-          width={screenWidth * 0.8}
-          focusOnPress
-          showText
-          textSize={12}
-          textColor="white"
-          height={220}
-          chartConfig={{
-            color: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
-            labelColor: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
-          }}
-          accessor="amount"
-          backgroundColor="transparent"
-          paddingLeft="15"
-          absolute
-        />
+        {totals.income === 0 && totals.expense === 0 ? (
+          <Text>No transactions for today.</Text>
+        ) : (
+          <PieChart
+            data={chartData}
+            width={screenWidth * 0.8}
+            showText
+            textSize={12}
+            textColor="white"
+            height={220}
+            accessor="value"  // Corrected accessor
+            backgroundColor="transparent"
+            paddingLeft="15"
+            absolute
+          />
+        )}
       </View>
     </Card>
   );
