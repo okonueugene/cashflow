@@ -244,9 +244,11 @@ const ReadSMS = ({ smsList, targetSavings }) => {
 
 
   return (
+    <View style={{ flex: 1 }}>
+
     <ScrollView>
       <StatusBar barStyle="light-content" backgroundColor="#009900" />
-      <Text style={{ textAlign: 'center', fontSize: 20, margin: 20 }}>M-PESA Transactions</Text>
+      <Text style={{ textAlign: 'center', fontSize: 17, margin: 17 }}>M-PESA Transactions</Text>
       <View style={{ flex: 1 }}>
         <Targets balance={balance} targetSavings={targetSavings} />
       </View>
@@ -262,7 +264,11 @@ const ReadSMS = ({ smsList, targetSavings }) => {
       <View style={{ flex: 1 }}>
         <SummaryChartMonthly />
       </View>
+      <View style={{ flex: 1 }}>
+        <SummaryChartYearly />
+      </View>
     </ScrollView>
+    </View>
   );
 };
 

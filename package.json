@@ -17,6 +17,7 @@
     "gifted-charts-core": "^0.1.29",
     "react": "18.3.1",
     "react-native": "0.75.2",
+    "react-native-background-actions": "^4.0.1",
     "react-native-cli": "^2.0.1",
     "react-native-exception-handler": "^2.10.10",
     "react-native-fs": "^2.20.0",
